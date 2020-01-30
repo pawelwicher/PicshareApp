@@ -1,56 +1,97 @@
-module Main exposing (..)
+module Main exposing (main)
 
+-- START:import.browser
 import Browser
-import Html exposing (Html, text, div, h1, img)
-import Html.Attributes exposing (src)
+-- END:import.browser
+import Html exposing (..)
+import Html.Attributes exposing (class, src)
+import Html.Events exposing (onClick)
 
 
----- MODEL ----
+baseUrl : String
+baseUrl =
+    "https://programming-elm.com/"
 
 
-type alias Model =
-    {}
+initialModel : { url : String, caption : String, liked : Bool }
+initialModel =
+    { url = baseUrl ++ "1.jpg"
+    , caption = "Surfing"
+    , liked = False
+    }
 
 
-init : ( Model, Cmd Msg )
-init =
-    ( {}, Cmd.none )
+viewDetailedPhoto :
+    { url : String, caption : String, liked : Bool }
+    -> Html Msg
+viewDetailedPhoto model =
+    let
+        buttonClass =
+            if model.liked then
+                "fa-heart"
 
+            else
+                "fa-heart-o"
 
+        msg =
+            if model.liked then
+                Unlike
 
----- UPDATE ----
-
-
-type Msg
-    = NoOp
-
-
-update : Msg -> Model -> ( Model, Cmd Msg )
-update msg model =
-    ( model, Cmd.none )
-
-
-
----- VIEW ----
-
-
-view : Model -> Html Msg
-view model =
-    div []
-        [ img [ src "/logo.svg" ] []
-        , h1 [] [ text "Your Elm App is working!" ]
+            else
+                Like
+    in
+    div [ class "detailed-photo" ]
+        [ img [ src model.url ] []
+        , div [ class "photo-info" ]
+            [ div [ class "like-button" ]
+                [ i
+                    [ class "fa fa-2x"
+                    , class buttonClass
+                    , onClick msg
+                    ]
+                    []
+                ]
+            , h2 [ class "caption" ] [ text model.caption ]
+            ]
         ]
 
 
+view : { url : String, caption : String, liked : Bool } -> Html Msg
+view model =
+    div []
+        [ div [ class "header" ]
+            [ h1 [] [ text "Picshare" ] ]
+        , div [ class "content-flow" ]
+            [ viewDetailedPhoto model ]
+        ]
 
----- PROGRAM ----
+
+type Msg
+    = Like
+    | Unlike
 
 
-main : Program () Model Msg
+-- START:update
+update :
+    Msg
+    -> { url : String, caption : String, liked : Bool }
+    -> { url : String, caption : String, liked : Bool }
+update msg model =
+    case msg of -- (1)
+        Like -> -- (2)
+            { model | liked = True }
+
+        Unlike -> -- (3)
+            { model | liked = False }
+-- END:update
+
+
+-- START:main
+main : Program () { url : String, caption : String, liked : Bool } Msg
 main =
-    Browser.element
-        { view = view
-        , init = \_ -> init
+    Browser.sandbox
+        { init = initialModel
+        , view = view
         , update = update
-        , subscriptions = always Sub.none
         }
+-- END:main
