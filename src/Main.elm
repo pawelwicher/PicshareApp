@@ -1,42 +1,59 @@
 module Main exposing (main)
 
--- START:import.browser
-import Browser
--- END:import.browser
 import Html exposing (..)
 import Html.Attributes exposing (class, src)
 import Html.Events exposing (onClick)
+import Browser
+import Browser.Events exposing (onKeyDown)
+import Json.Decode as Decode
 
+type alias Model =
+    { url : String
+    , caption : String
+    , liked : Bool 
+    }
+
+type Msg
+    = Like
+    | Unlike
+    | None
+
+keyDecoder : Decode.Decoder Msg
+keyDecoder =
+  Decode.map toKey (Decode.field "key" Decode.string)
+
+toKey : String -> Msg
+toKey keyValue =
+  case keyValue of
+    "ArrowUp" ->
+      Like
+    "ArrowDown" ->
+      Unlike
+    _ ->
+      None
 
 baseUrl : String
 baseUrl =
     "https://programming-elm.com/"
 
-
-initialModel : { url : String, caption : String, liked : Bool }
-initialModel =
+initModel : Model
+initModel =
     { url = baseUrl ++ "1.jpg"
     , caption = "Surfing"
     , liked = False
     }
 
-
-viewDetailedPhoto :
-    { url : String, caption : String, liked : Bool }
-    -> Html Msg
-viewDetailedPhoto model =
+viewPhoto : Model -> Html Msg
+viewPhoto model =
     let
         buttonClass =
             if model.liked then
                 "fa-heart"
-
             else
                 "fa-heart-o"
-
         msg =
             if model.liked then
                 Unlike
-
             else
                 Like
     in
@@ -55,43 +72,39 @@ viewDetailedPhoto model =
             ]
         ]
 
+init : flags -> ( Model, Cmd msg )
+init _ =
+    ( initModel, Cmd.none )
 
-view : { url : String, caption : String, liked : Bool } -> Html Msg
+
+view : Model -> Html Msg
 view model =
     div []
         [ div [ class "header" ]
             [ h1 [] [ text "Picshare" ] ]
         , div [ class "content-flow" ]
-            [ viewDetailedPhoto model ]
+            [ viewPhoto model ]
         ]
 
-
-type Msg
-    = Like
-    | Unlike
-
-
--- START:update
-update :
-    Msg
-    -> { url : String, caption : String, liked : Bool }
-    -> { url : String, caption : String, liked : Bool }
+update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    case msg of -- (1)
-        Like -> -- (2)
-            { model | liked = True }
+    case msg of
+        Like ->
+            ( { model | liked = True }, Cmd.none )
+        Unlike ->
+            ( { model | liked = False }, Cmd.none )
+        None ->
+            ( model, Cmd.none )
 
-        Unlike -> -- (3)
-            { model | liked = False }
--- END:update
+subscriptions : Model -> Sub Msg
+subscriptions _ =
+    onKeyDown keyDecoder
 
-
--- START:main
-main : Program () { url : String, caption : String, liked : Bool } Msg
+main : Program () Model Msg
 main =
-    Browser.sandbox
-        { init = initialModel
+    Browser.element
+        { init = init
         , view = view
         , update = update
+        , subscriptions = subscriptions
         }
--- END:main
