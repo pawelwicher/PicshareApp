@@ -4,8 +4,6 @@ import Browser
 import Html exposing (..)
 import Html.Attributes exposing (class, disabled, placeholder, src, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
-import Browser.Events exposing (onKeyDown)
-import Json.Decode as Decode
 
 type alias Model =
     { url : String
