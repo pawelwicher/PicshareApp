@@ -43,7 +43,7 @@ photoDecoder =
 fetchFeed : Cmd Msg
 fetchFeed =
   Http.get
-    { url = baseUrl ++ "feed/2"
+    { url = baseUrl ++ "feed/3"
     , expect = Http.expectJson LoadFeed photoDecoder
     }
 
