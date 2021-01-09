@@ -1,197 +1,229 @@
-module Main exposing (main, Photo)
+module Main exposing (main)
 
-import Browser
-import Html exposing (..)
-import Html.Attributes exposing (class, disabled, placeholder, src, type_, value)
-import Html.Events exposing (onClick, onInput, onSubmit)
-import Json.Decode exposing (Decoder, bool, int, list, string, succeed)
-import Json.Decode.Pipeline exposing (hardcoded, required)
-import Http
+import Account
+import Browser exposing (Document, UrlRequest)
+import Browser.Navigation as Navigation
+import Html exposing (Html, a, div, h1, i, text)
+import Html.Attributes exposing (class)
+import Routes
+import Url exposing (Url)
+-- START:import.wrappers
+import PublicFeed
+import UserFeed
+-- END:import.wrappers
+import WebSocket
 
-type alias Id =
-  Int
 
-type alias Photo =
-  { id : Id 
-  , url : String
-  , caption : String
-  , liked : Bool
-  , comments : List String
-  , newComment : String
-  }
+
+---- MODEL ----
+
+
+type Page
+    = PublicFeed PublicFeed.Model
+    | Account Account.Model
+    -- START:type.Page
+    | UserFeed String UserFeed.Model
+    -- END:type.Page
+    | NotFound
+
 
 type alias Model =
-  { photo : Maybe Photo    
-  }
-
-type Msg
-  = ToggleLike
-  | UpdateComment String
-  | SaveComment
-  | LoadFeed (Result Http.Error Photo)
-
-photoDecoder : Decoder Photo
-photoDecoder =
-  succeed Photo
-    |> required "id" int
-    |> required "url" string
-    |> required "caption" string
-    |> required "liked" bool
-    |> required "comments" (list string)
-    |> hardcoded ""
-
-fetchFeed : Cmd Msg
-fetchFeed =
-  Http.get
-    { url = baseUrl ++ "feed/3"
-    , expect = Http.expectJson LoadFeed photoDecoder
+    { page : Page
+    , navigationKey : Navigation.Key
     }
 
-baseUrl : String
-baseUrl =
-  "https://programming-elm.com/"
 
-initialModel : Model
-initialModel =
-  {  photo = Nothing
-  }
+initialModel : Navigation.Key -> Model
+initialModel navigationKey =
+    { page = NotFound
+    , navigationKey = navigationKey
+    }
 
-init : () -> (Model, Cmd Msg)
-init () =
-  (initialModel, fetchFeed)
 
-viewLoveButton : Photo -> Html Msg
-viewLoveButton model =
-  let
-    buttonClass =
-      if model.liked then
-        "fa-heart"
-      else
-        "fa-heart-o"
-  in
-  div [ class "like-button" ]
-    [ i
-      [ class "fa fa-2x"
-      , class buttonClass
-      , onClick ToggleLike
-      ]
-      []
-    ]
+init : () -> Url -> Navigation.Key -> ( Model, Cmd Msg )
+init () url navigationKey =
+    setNewPage (Routes.match url) (initialModel navigationKey)
 
-viewComment : String -> Html Msg
-viewComment comment =
-  li []
-    [ strong [] [ text "Comment:" ]
-    , text (" " ++ comment)
-    ]
 
-viewCommentList : List String -> Html Msg
-viewCommentList comments =
-  case comments of
-    [] ->
-      text ""
-    _ ->
-      div [ class "comments" ]
-        [ ul []
-          (List.map viewComment comments)
+
+---- VIEW ----
+
+
+viewHeader : Html Msg
+viewHeader =
+    div [ class "header" ]
+        [ div [ class "header-nav" ]
+            [ a [ class "nav-brand", Routes.href Routes.Home ]
+                [ text "Picshare" ]
+            , a [ class "nav-account", Routes.href Routes.Account ]
+                [ i [ class "fa fa-2x fa-gear" ] [] ]
+            ]
         ]
 
-viewComments : Photo -> Html Msg
-viewComments model =
-  div []
-    [ viewCommentList model.comments
-    , form [ class "new-comment", onSubmit SaveComment ]
-      [ input
-        [ type_ "text"
-        , placeholder "Add a comment..."
-        , value model.newComment
-        , onInput UpdateComment
-        ]
-        []
-      , button
-        [ disabled (String.isEmpty model.newComment) ]
-        [ text "Save" ]
-      ]
-    ]
 
-viewDetailedPhoto : Photo -> Html Msg
-viewDetailedPhoto model =
-  div [ class "detailed-photo" ]
-    [ img [ src model.url ] []
-    , div [ class "photo-info" ]
-      [ viewLoveButton model
-      , h2 [ class "caption" ] [ text model.caption ]
-      , viewComments model
-      ]
-    ]
+viewContent : Page -> ( String, Html Msg )
+viewContent page =
+    case page of
+        PublicFeed publicFeedModel ->
+            ( "Picshare"
+            , PublicFeed.view publicFeedModel
+                |> Html.map PublicFeedMsg
+            )
 
-viewFeed : Maybe Photo -> Html Msg
-viewFeed maybePhoto =
-  case maybePhoto of
-    Just photo ->
-      viewDetailedPhoto photo
-    Nothing ->
-      div [ class "loading-feed" ]
-          [ text "Loading feed..." ]
+        Account accountModel ->
+            ( "Account"
+            , Account.view accountModel
+                |> Html.map AccountMsg
+            )
 
-view : Model -> Html Msg
+        -- START:viewContent.UserFeed
+        UserFeed username userFeedModel ->
+            ( "User Feed for @" ++ username
+            , UserFeed.view userFeedModel
+                |> Html.map UserFeedMsg
+            )
+        -- END:viewContent.UserFeed
+
+        NotFound ->
+            ( "Not Found"
+            , div [ class "not-found" ]
+                [ h1 [] [ text "Page Not Found" ] ]
+            )
+
+
+view : Model -> Document Msg
 view model =
-  div []
-    [ div [ class "header" ]
-      [ h1 [] [ text "Picshare" ] ]
-    , div [ class "content-flow" ]
-      [ viewFeed model.photo ]
-    ]
+    let
+        ( title, content ) =
+            viewContent model.page
+    in
+    { title = title
+    , body = [ viewHeader, content ]
+    }
 
-toogleLike : Photo -> Photo
-toogleLike photo =
-  { photo | liked = not photo.liked }
 
-updateComment : String -> Photo -> Photo
-updateComment comment photo =
-  { photo | newComment = comment }
 
-updateFeed : (Photo -> Photo) -> Maybe Photo -> Maybe Photo
-updateFeed updatePhoto maybePhoto =
-  Maybe.map updatePhoto maybePhoto
+---- UPDATE ----
 
-saveNewComment : Photo -> Photo
-saveNewComment model =
-  let
-    comment = String.trim model.newComment
-  in
-  case comment of
-    "" ->
-      model
-    _ ->
-      { model
-        | comments = model.comments ++ [ comment ]
-        , newComment = ""
-      }
 
-update : Msg -> Model -> (Model, Cmd Msg)
+type Msg
+    = NewRoute (Maybe Routes.Route)
+    | Visit UrlRequest
+    | PublicFeedMsg PublicFeed.Msg
+    | AccountMsg Account.Msg
+    -- START:type.Msg
+    | UserFeedMsg UserFeed.Msg
+    -- END:type.Msg
+
+
+setNewPage : Maybe Routes.Route -> Model -> ( Model, Cmd Msg )
+setNewPage maybeRoute model =
+    case maybeRoute of
+        Just Routes.Home ->
+            let
+                -- START:setNewPage.Home
+                ( publicFeedModel, publicFeedCmd ) =
+                    PublicFeed.init
+                -- END:setNewPage.Home
+            in
+            ( { model | page = PublicFeed publicFeedModel }
+            , Cmd.map PublicFeedMsg publicFeedCmd
+            )
+
+        Just Routes.Account ->
+            let
+                ( accountModel, accountCmd ) =
+                    Account.init
+            in
+            ( { model | page = Account accountModel }
+            , Cmd.map AccountMsg accountCmd
+            )
+
+        -- START:setNewPage.UserFeed
+        Just (Routes.UserFeed username) ->
+            let
+                ( userFeedModel, userFeedCmd ) =
+                    UserFeed.init username
+            in
+            ( { model | page = UserFeed username userFeedModel }
+            , Cmd.map UserFeedMsg userFeedCmd
+            )
+        -- END:setNewPage.UserFeed
+
+        Nothing ->
+            ( { model | page = NotFound }, Cmd.none )
+
+
+update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-  case msg of
-    ToggleLike ->
-      ({ model | photo = updateFeed toogleLike model.photo }, Cmd.none)
-    UpdateComment comment ->
-      ({ model | photo = updateFeed (updateComment comment) model.photo }, Cmd.none)
-    SaveComment ->
-      ({ model | photo = updateFeed saveNewComment model.photo }, Cmd.none)
-    LoadFeed (Ok photo) ->
-      ({ model | photo = Just photo }, Cmd.none)
-    LoadFeed (Err _) ->
-      (model, Cmd.none)
+    case ( msg, model.page ) of
+        ( NewRoute maybeRoute, _ ) ->
+            let
+                ( updatedModel, cmd ) =
+                    setNewPage maybeRoute model
+            in
+            ( updatedModel
+            , Cmd.batch [ cmd, WebSocket.close () ]
+            )
+
+        ( Visit (Browser.Internal url), _ ) ->
+            ( model, Navigation.pushUrl model.navigationKey (Url.toString url) )
+
+        ( PublicFeedMsg publicFeedMsg, PublicFeed publicFeedModel ) ->
+            let
+                ( updatedPublicFeedModel, publicFeedCmd ) =
+                    PublicFeed.update publicFeedMsg publicFeedModel
+            in
+            ( { model | page = PublicFeed updatedPublicFeedModel }
+            , Cmd.map PublicFeedMsg publicFeedCmd
+            )
+
+        ( AccountMsg accountMsg, Account accountModel ) ->
+            let
+                ( updatedAccountModel, accountCmd ) =
+                    Account.update accountMsg accountModel
+            in
+            ( { model | page = Account updatedAccountModel }
+            , Cmd.map AccountMsg accountCmd
+            )
+
+        -- START:update.UserFeed
+        ( UserFeedMsg userFeedMsg, UserFeed username userFeedModel ) ->
+            let
+                ( updatedUserFeedModel, userFeedCmd ) =
+                    UserFeed.update userFeedMsg userFeedModel
+            in
+            ( { model | page = UserFeed username updatedUserFeedModel }
+            , Cmd.map UserFeedMsg userFeedCmd
+            )
+        -- END:update.UserFeed
+
+        _ ->
+            ( model, Cmd.none )
+
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-  Sub.none
+    case model.page of
+        PublicFeed publicFeedModel ->
+            PublicFeed.subscriptions publicFeedModel
+                |> Sub.map PublicFeedMsg
+
+        _ ->
+            Sub.none
+
+
+
+---- PROGRAM ----
+
 
 main : Program () Model Msg
 main =
-  Browser.element
-    { init = init
-    , view = view
-    , update = update
-    , subscriptions = subscriptions
-    }
+    Browser.application
+        { init = init
+        , view = view
+        , update = update
+        , subscriptions = subscriptions
+        , onUrlRequest = Visit
+        , onUrlChange = Routes.match >> NewRoute
+        }
